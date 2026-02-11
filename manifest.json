@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.3",
+  "name": "mermaid-mcp-app",
+  "display_name": "Mermaid Diagrams",
+  "version": "1.0.0",
+  "description": "Interactive Mermaid diagrams with streaming preview, theme switching, and fullscreen editing.",
+  "long_description": "An MCP App server that renders Mermaid diagrams with streaming preview animations, theme customization, interactive pan/zoom, and fullscreen editing mode. Supports all Mermaid diagram types including flowcharts, sequence diagrams, class diagrams, state diagrams, and more.",
+  "author": {
+    "name": "MCP Community",
+    "url": "https://github.com/modelcontextprotocol"
+  },
+  "icon": "logo.png",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js", "--stdio"]
+    }
+  },
+  "tools": [
+    {
+      "name": "read_me",
+      "description": "Returns the Mermaid syntax reference with examples and tips. Call this before using create_view."
+    },
+    {
+      "name": "create_view",
+      "description": "Renders a Mermaid diagram with streaming preview animations and interactive features."
+    }
+  ],
+  "keywords": ["mermaid", "diagrams", "flowchart", "visualization", "mcp-app"],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "license": "MIT"
+}

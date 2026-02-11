@@ -1,0 +1,433 @@
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+
+// Works both from source (server.ts) and compiled (dist/server.js)
+const DIST_DIR = import.meta.filename.endsWith(".ts")
+  ? path.join(import.meta.dirname, "..", "dist")
+  : import.meta.dirname;
+
+// ============================================================
+// RECALL: Mermaid diagram syntax reference
+// ============================================================
+const MERMAID_CHEAT_SHEET = `# Mermaid Diagram Syntax Reference
+
+Thanks for calling read_me! Use create_view to render your Mermaid diagrams with streaming animations.
+
+## CRITICAL: Streaming Rules (MUST FOLLOW)
+
+The diagram renders progressively as you generate code. To ensure smooth streaming:
+
+### Rule 1: One complete statement per line
+Each line must be a self-contained, valid piece of syntax.
+- GOOD: \`A[Start] --> B[Process]\`
+- BAD: Multi-line node definitions spread across lines
+
+### Rule 2: NEVER use \`<br/>\` or HTML tags in node labels
+HTML tags break parsing when the line is cut mid-stream.
+- GOOD: \`A[Document Rejected]\`
+- BAD: \`A[Document<br/>Rejected]\`
+If you need multi-line labels, use separate nodes instead.
+
+### Rule 3: Keep node labels short and simple
+- GOOD: \`A[Validate Input]\`
+- BAD: \`A[Validate the user input data and check for errors in the submission form]\`
+Use 2-4 words per label. Add detail via comments, not node text.
+
+### Rule 4: Define connections immediately
+Don't define all nodes first then connections. Define each node WITH its connection:
+\`\`\`mermaid
+flowchart TD
+    A[Start] --> B{Valid?}
+    B -->|Yes| C[Process]
+    B -->|No| D[Error]
+    C --> E[End]
+    D --> E
+\`\`\`
+
+### Rule 5: Avoid subgraphs for streaming
+Subgraphs require \`end\` to close, which breaks mid-stream parsing.
+- If you must use subgraphs, keep them very short (2-3 nodes max)
+- Place the \`end\` keyword immediately after the last node
+
+### Rule 6: Use simple node IDs
+Use short IDs: \`A\`, \`B\`, \`C\` or \`step1\`, \`step2\`. Avoid long IDs.
+
+### Rule 7: No special characters in labels
+Avoid \`<\`, \`>\`, \`&\`, quotes in node labels. Use plain text only.
+- GOOD: \`A[Check if valid]\`
+- BAD: \`A[Check <status> & validate]\`
+
+## Diagram Types
+
+### Flowchart
+\`\`\`mermaid
+flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Process 1]
+    B -->|No| D[Process 2]
+    C --> E[End]
+    D --> E
+\`\`\`
+
+**Directions:** TD (top-down), LR (left-right), BT (bottom-top), RL (right-left)
+**Node shapes:** [Rectangle], (Rounded), ([Stadium]), [[Subroutine]], [(Database)], ((Circle)), >Asymmetric], {Diamond}, {{Hexagon}}, [/Parallelogram/], [\\Trapezoid\\]
+**Arrows:** --> (solid), -.-> (dotted), ==> (thick), --text--> (labeled)
+
+### Sequence Diagram
+\`\`\`mermaid
+sequenceDiagram
+    participant A as Alice
+    participant B as Bob
+    A->>B: Hello Bob!
+    B->>A: Hello Alice!
+    Note over A,B: They greet each other
+\`\`\`
+
+**Arrows:** ->> (solid), -->> (dotted), -x (cross), -) (open)
+**Features:** activate/deactivate, loops, alt/else/opt, par, Note over/right of/left of
+
+### Class Diagram
+\`\`\`mermaid
+classDiagram
+    Animal <|-- Duck
+    Animal <|-- Fish
+    Animal : +name
+    Animal : +age
+    Animal: +isMammal()
+    class Duck{
+        +swim()
+        +quack()
+    }
+\`\`\`
+
+**Relationships:** <|-- (inheritance), *-- (composition), o-- (aggregation), --> (association), -- (link)
+
+### State Diagram
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Processing: start
+    Processing --> Success: complete
+    Processing --> Error: fail
+    Success --> [*]
+    Error --> Idle: retry
+\`\`\`
+
+### Entity Relationship Diagram
+\`\`\`mermaid
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+\`\`\`
+
+**Relationships:** ||--|| (one to one), ||--o{ (one to many), }o--o{ (many to many)
+
+### Gantt Chart
+\`\`\`mermaid
+gantt
+    title Project Timeline
+    dateFormat  YYYY-MM-DD
+    section Planning
+    Research :done, 2024-01-01, 7d
+    Design   :active, 2024-01-08, 5d
+    section Development
+    Backend  :2024-01-13, 10d
+    Frontend :2024-01-18, 10d
+\`\`\`
+
+### Pie Chart
+\`\`\`mermaid
+pie
+    title Browser Market Share
+    "Chrome" : 65
+    "Safari" : 20
+    "Firefox" : 10
+    "Edge" : 5
+\`\`\`
+
+### Git Graph
+\`\`\`mermaid
+gitGraph
+    commit
+    commit
+    branch develop
+    checkout develop
+    commit
+    commit
+    checkout main
+    merge develop
+\`\`\`
+
+### User Journey
+\`\`\`mermaid
+journey
+    title My Day
+    section Morning
+      Wake up: 5: Me
+      Breakfast: 4: Me
+    section Work
+      Coding: 5: Me
+      Meetings: 3: Me, Colleagues
+\`\`\`
+
+## Themes
+
+Available themes for the create_view tool:
+- **default** - Standard Mermaid theme (light background)
+- **forest** - Green forest theme
+- **dark** - Dark background theme
+- **neutral** - Neutral gray theme
+- **base** - Minimal base theme
+
+Set theme via the \`theme\` parameter in create_view.
+
+## Styling Tips
+
+### Colors in Flowcharts
+\`\`\`mermaid
+flowchart LR
+    A[Normal]
+    B[Styled]:::customClass
+    classDef customClass fill:#f9f,stroke:#333,stroke-width:4px
+\`\`\`
+
+### Inline Styles
+\`\`\`mermaid
+flowchart TD
+    A[Start]
+    B[Process]
+    style A fill:#bbf,stroke:#333,stroke-width:2px
+    style B fill:#bfb,stroke:#3a3
+\`\`\`
+
+## Best Practices
+
+1. **Keep syntax valid** - One syntax error breaks the entire diagram
+2. **Use meaningful IDs** - Short node IDs (A, B, C) or descriptive (start, process1)
+3. **Label clearly** - Use [Square brackets] for node text to improve readability
+4. **Direction matters** - Choose TD/LR based on diagram complexity
+5. **Avoid crossing lines** - Reorganize nodes to minimize line crossings
+6. **Use subgraphs** - Group related nodes in flowcharts:
+   \`\`\`mermaid
+   flowchart TD
+       subgraph Preprocessing
+           A --> B
+       end
+       subgraph Processing
+           C --> D
+       end
+       B --> C
+   \`\`\`
+
+## Common Patterns
+
+### Decision Tree
+\`\`\`mermaid
+flowchart TD
+    Start[User visits site] --> Auth{Logged in?}
+    Auth -->|Yes| Dashboard[Show Dashboard]
+    Auth -->|No| Login[Show Login]
+    Login --> Auth
+\`\`\`
+
+### API Flow
+\`\`\`mermaid
+sequenceDiagram
+    Client->>+Server: POST /api/data
+    Server->>+Database: Query
+    Database-->>-Server: Results
+    Server-->>-Client: JSON Response
+\`\`\`
+
+### System Architecture
+\`\`\`mermaid
+flowchart LR
+    User((User)) --> Frontend[Web App]
+    Frontend --> API[REST API]
+    API --> DB[(Database)]
+    API --> Cache[(Redis Cache)]
+    API --> Queue[Message Queue]
+\`\`\`
+
+## Tips for Streaming
+
+- The diagram renders progressively as you send the mermaid syntax
+- Syntax errors will show the last valid state
+- Complex diagrams (>20 nodes) may take a moment to render
+- Use the fullscreen mode for editing and fine-tuning
+
+## Interactive Features
+
+Once rendered, you can:
+- **Pan/Zoom** - Navigate large diagrams
+- **Fullscreen** - Edit syntax and see live preview
+- **Theme Switch** - Change visual theme on the fly
+- **Export** - Download as SVG or PNG
+
+Now call **create_view** with your mermaid syntax!
+
+REMEMBER: Follow all Streaming Rules above! No HTML tags, no <br/>, short labels, one statement per line.
+`;
+
+/**
+ * Registers all Mermaid tools and resources on the given McpServer.
+ */
+export function registerTools(server: McpServer, distDir: string): void {
+  const resourceUri = "ui://mermaid/mcp-app.html";
+
+  // ============================================================
+  // Tool 1: read_me (call before drawing)
+  // ============================================================
+  server.registerTool(
+    "read_me",
+    {
+      description: "Returns the Mermaid syntax reference with diagram types, examples, and tips. Call this BEFORE using create_view for the first time.",
+      annotations: { readOnlyHint: true },
+    },
+    async (): Promise<CallToolResult> => {
+      return { content: [{ type: "text", text: MERMAID_CHEAT_SHEET }] };
+    },
+  );
+
+  // ============================================================
+  // Tool 2: create_view (Mermaid diagram rendering)
+  // ============================================================
+  registerAppTool(
+    server,
+    "create_view",
+    {
+      title: "Draw Mermaid Diagram",
+      description: `Renders a Mermaid diagram with streaming preview animations.
+Supports all Mermaid diagram types (flowchart, sequence, class, state, ER, gantt, pie, etc.).
+Call read_me first to learn Mermaid syntax.`,
+      inputSchema: z.object({
+        mermaid: z.string().describe(
+          `Mermaid diagram syntax. STREAMING RULES (mandatory):
+1. One complete statement per line
+2. NEVER use <br/> or any HTML tags in labels
+3. Keep labels short: 2-4 words max
+4. No special chars (<, >, &) in labels
+5. Define connections immediately with nodes
+6. Avoid subgraphs when possible
+7. Use short node IDs (A, B, C or step1, step2)
+Call read_me first for full syntax reference.`
+        ),
+        theme: z
+          .enum(["default", "forest", "dark", "neutral", "base"])
+          .optional()
+          .default("default")
+          .describe("Visual theme for the diagram."),
+        title: z.string().optional().describe("Optional title to display above the diagram."),
+      }),
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri } },
+    },
+    async ({ mermaid, theme, title }): Promise<CallToolResult> => {
+      if (!mermaid.trim()) {
+        return {
+          content: [{ type: "text", text: "Error: mermaid syntax cannot be empty." }],
+          isError: true,
+        };
+      }
+
+      const checkpointId = Math.random().toString(36).slice(2, 8);
+      
+      const titleText = title ? `\n\nTitle: "${title}"` : "";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Mermaid diagram displayed!${titleText}\n\nCheckpoint ID: "${checkpointId}"\nTheme: ${theme}\n\nThe diagram is now shown inline with streaming animations. Click the expand button for fullscreen editing mode.`,
+          },
+        ],
+        structuredContent: { checkpointId, theme, title },
+      };
+    },
+  );
+
+  // ============================================================
+  // Tool 3: export_svg (app-only, called by UI)
+  // ============================================================
+  registerAppTool(
+    server,
+    "export_svg",
+    {
+      description: "Export diagram as SVG or PNG. Called by the UI, not by the model.",
+      inputSchema: z.object({
+        svg: z.string().describe("SVG content to export"),
+        format: z.enum(["svg", "png"]).describe("Export format"),
+      }),
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ svg, format }): Promise<CallToolResult> => {
+      // For now, just return the SVG content
+      // PNG conversion could be added later with a library like sharp
+      if (format === "svg") {
+        return {
+          content: [{ type: "text", text: svg }],
+          structuredContent: { svg, format },
+        };
+      }
+      
+      return {
+        content: [{ type: "text", text: "PNG export not yet implemented. Use SVG format." }],
+        isError: true,
+      };
+    },
+  );
+
+  // CSP: allow Mermaid to load from CDN
+  const cspMeta = {
+    ui: {
+      csp: {
+        resourceDomains: ["https://cdn.jsdelivr.net"],
+        connectDomains: ["https://cdn.jsdelivr.net"],
+      },
+    },
+  };
+
+  // Register the single shared resource for all UI tools
+  registerAppResource(
+    server,
+    resourceUri,
+    resourceUri,
+    { mimeType: RESOURCE_MIME_TYPE },
+    async (): Promise<ReadResourceResult> => {
+      const html = await fs.readFile(path.join(distDir, "src", "mcp-app.html"), "utf-8");
+      return {
+        contents: [
+          {
+            uri: resourceUri,
+            mimeType: RESOURCE_MIME_TYPE,
+            text: html,
+            _meta: {
+              ui: {
+                ...cspMeta.ui,
+                prefersBorder: true,
+                permissions: { clipboardWrite: {} },
+              },
+            },
+          },
+        ],
+      };
+    },
+  );
+}
+
+/**
+ * Creates a new MCP server instance with Mermaid diagram tools.
+ */
+export function createServer(): McpServer {
+  const server = new McpServer({
+    name: "Mermaid Diagrams",
+    version: "1.0.0",
+  });
+  registerTools(server, DIST_DIR);
+  return server;
+}
