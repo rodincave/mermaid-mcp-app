@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { optimize } from "svgo";
 import { z } from "zod";
 
 // Works both from source (server.ts) and compiled (dist/server.js)
@@ -458,12 +459,31 @@ Call read_me first for full syntax reference.`
       _meta: { ui: { visibility: ["app"] } },
     },
     async ({ svg, format }): Promise<CallToolResult> => {
-      // For now, just return the SVG content
-      // PNG conversion could be added later with a library like sharp
       if (format === "svg") {
+        // Optimize SVG with SVGO
+        const result = optimize(svg, {
+          multipass: true,
+          plugins: [
+            {
+              name: "preset-default",
+              params: {
+                overrides: {
+                  // Keep IDs that mermaid uses for styling
+                  cleanupIds: false,
+                  // Round path coordinates to 2 decimal places (mermaid outputs 15+)
+                  convertPathData: { floatPrecision: 2 },
+                  // Round numeric values to 2 decimal places
+                  cleanupNumericValues: { floatPrecision: 2 },
+                },
+              },
+            },
+          ],
+        });
+        const optimizedSvg = result.data;
+        console.info(`SVGO: ${Math.round(svg.length / 1024)}KB → ${Math.round(optimizedSvg.length / 1024)}KB (${Math.round((1 - optimizedSvg.length / svg.length) * 100)}% reduction)`);
         return {
-          content: [{ type: "text", text: svg }],
-          structuredContent: { svg, format },
+          content: [{ type: "text", text: optimizedSvg }],
+          structuredContent: { svg: optimizedSvg, format },
         };
       }
       

@@ -43,6 +43,12 @@ const DownloadIcon = () => (
   </svg>
 );
 
+const SpinnerIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="spin">
+    <path d="M8 1a7 7 0 1 0 7 7" />
+  </svg>
+);
+
 // ============================================================
 // Main Component
 // ============================================================
@@ -58,6 +64,7 @@ function MermaidApp() {
   });
   // Tracks the agent-provided built-in mermaid theme name (e.g. "forest", "neutral")
   const [agentCustomTheme, setAgentCustomTheme] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const agentCustomThemeRef = useRef<string | null>(null);
   const [renderedSvg, setRenderedSvg] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -279,25 +286,41 @@ function MermaidApp() {
     await renderMermaid(editedMermaid || diagramState.mermaid, newTheme, false);
   }, [editedMermaid, diagramState.mermaid]);
 
-  // Export handler
+  // Copy text to clipboard using textarea fallback (works in sandboxed iframes
+  // where navigator.clipboard loses user gesture context after async calls)
+  const copyToClipboard = useCallback((text: string) => {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }, []);
+
+  // Export handler: send raw SVG to server for SVGO optimization, then copy result to clipboard
   const handleExport = useCallback(async () => {
-    if (!app || !renderedSvg) return;
+    if (!app || !renderedSvg || isExporting) return;
     
+    setIsExporting(true);
     try {
       const result = await app.callServerTool({
         name: "export_svg",
         arguments: { svg: renderedSvg, format: "svg" },
       });
 
-      if (!result.isError) {
-        // Copy SVG to clipboard
-        await navigator.clipboard.writeText(renderedSvg);
-        console.info("SVG copied to clipboard");
-      }
+      // Get the optimized SVG from the tool result content
+      const firstContent = result.content?.[0];
+      const optimizedSvg = (firstContent && "text" in firstContent ? firstContent.text : null) || renderedSvg;
+      copyToClipboard(optimizedSvg);
+      console.info(`SVG optimized & copied (${Math.round(optimizedSvg.length / 1024)}KB, was ${Math.round(renderedSvg.length / 1024)}KB)`);
     } catch (err) {
       console.error("Export error:", err);
+    } finally {
+      setIsExporting(false);
     }
-  }, [app, renderedSvg]);
+  }, [app, renderedSvg, copyToClipboard, isExporting]);
 
   // Fullscreen toggle
   const handleFullscreenToggle = useCallback(async () => {
@@ -364,8 +387,8 @@ function MermaidApp() {
                 <option value="custom">Custom ({agentCustomTheme})</option>
               )}
             </select>
-            <button onClick={handleExport} className="icon-btn" title="Export SVG">
-              <DownloadIcon />
+            <button onClick={handleExport} className="icon-btn" title="Export SVG" disabled={isExporting}>
+              {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
             </button>
             <button onClick={handleFullscreenToggle} className="icon-btn" title="Exit Fullscreen">
               <ExpandIcon />
