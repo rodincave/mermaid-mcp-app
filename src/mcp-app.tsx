@@ -56,6 +56,53 @@ const SpinnerIcon = () => (
 const detectDarkMode = (): boolean =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+/**
+ * Fix Mermaid cycle errors: when a node ID inside a subgraph matches the
+ * subgraph name, Mermaid throws "Setting X as parent of X would create a cycle".
+ * This renames the conflicting node IDs by appending "_node" and updates all
+ * references throughout the syntax.
+ */
+const fixSubgraphCycles = (syntax: string): string => {
+  const lines = syntax.split('\n');
+  // Collect subgraph names/IDs
+  const subgraphIds = new Set<string>();
+  for (const line of lines) {
+    const m = line.match(/^\s*subgraph\s+(\S+)/i);
+    if (m) subgraphIds.add(m[1]);
+  }
+  if (subgraphIds.size === 0) return syntax;
+
+  // Find node IDs that collide with a subgraph name
+  const collisions = new Set<string>();
+  for (const line of lines) {
+    if (/^\s*subgraph\s/i.test(line)) continue;
+    for (const sgId of subgraphIds) {
+      // Match node definitions like `Analytics[...]` or `Analytics(...)` or bare references
+      // that would be interpreted as a node with the same ID as the subgraph
+      const nodeDefPattern = new RegExp(`(?:^|\\s|-->|--o|--x|-\\.->|==>|\\|[^|]*\\|\\s*)${sgId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[\\[\\(\\{\\>]`, 'i');
+      if (nodeDefPattern.test(line)) {
+        collisions.add(sgId);
+      }
+    }
+  }
+  if (collisions.size === 0) return syntax;
+
+  // Replace all occurrences of colliding IDs with ID_svc
+  let fixed = syntax;
+  for (const id of collisions) {
+    const safeId = id + '_svc';
+    // Replace word-boundary occurrences that are node references (not subgraph declarations)
+    const fixedLines = fixed.split('\n').map(line => {
+      // Don't rename in subgraph declaration line
+      if (/^\s*subgraph\s/i.test(line)) return line;
+      // Replace the node ID everywhere in this line
+      return line.replace(new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), safeId);
+    });
+    fixed = fixedLines.join('\n');
+  }
+  return fixed;
+};
+
 function MermaidApp() {
   const [hostDark, setHostDark] = useState(detectDarkMode);
   const [diagramState, setDiagramState] = useState<DiagramState>({
@@ -78,6 +125,7 @@ function MermaidApp() {
   
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const previewViewportRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
   const renderingRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
@@ -156,6 +204,9 @@ function MermaidApp() {
     if (renderingRef.current) return; // prevent concurrent renders
     renderingRef.current = true;
 
+    // Fix subgraph/node ID collisions that cause cycle errors
+    const safeSyntax = fixSubgraphCycles(syntax);
+
     try {
       // "custom" → use the agent's built-in mermaid theme directly
       // "light" / "dark" → use 'base' theme with our custom themeVariables
@@ -164,15 +215,15 @@ function MermaidApp() {
 
       mermaid.initialize(
         isCustom
-          ? { startOnLoad: false, theme: (agentCustomThemeRef.current || 'default') as any, securityLevel: 'loose' }
-          : { startOnLoad: false, theme: 'base', themeVariables: isDark ? darkVars : lightVars, securityLevel: 'loose' }
+          ? { startOnLoad: false, theme: (agentCustomThemeRef.current || 'default') as any, securityLevel: 'loose', flowchart: { useMaxWidth: false }, sequence: { useMaxWidth: false }, gantt: { useMaxWidth: false }, journey: { useMaxWidth: false }, class: { useMaxWidth: false }, state: { useMaxWidth: false }, er: { useMaxWidth: false }, pie: { useMaxWidth: false }, gitGraph: { useMaxWidth: false } }
+          : { startOnLoad: false, theme: 'base', themeVariables: isDark ? darkVars : lightVars, securityLevel: 'loose', flowchart: { useMaxWidth: false }, sequence: { useMaxWidth: false }, gantt: { useMaxWidth: false }, journey: { useMaxWidth: false }, class: { useMaxWidth: false }, state: { useMaxWidth: false }, er: { useMaxWidth: false }, pie: { useMaxWidth: false }, gitGraph: { useMaxWidth: false } }
       );
 
       // During streaming, pre-validate with parse() to avoid DOM
       // pollution from failed render() calls.
       if (isPartial) {
         try {
-          await mermaid.parse(syntax);
+          await mermaid.parse(safeSyntax);
         } catch {
           // Syntax not yet valid - keep the last successful SVG
           return;
@@ -182,7 +233,7 @@ function MermaidApp() {
       const id = `mermaid-${Date.now()}`;
       
       try {
-        const { svg } = await mermaid.render(id, syntax);
+        const { svg } = await mermaid.render(id, safeSyntax);
         setRenderedSvg(svg);
         setError(null);
       } catch (renderErr: any) {
@@ -322,16 +373,114 @@ function MermaidApp() {
     }
   }, [app, renderedSvg, copyToClipboard, isExporting]);
 
+  // Calculate zoom + pan to fit and center the diagram in the viewport
+  const calcFitView = useCallback((viewportEl: HTMLDivElement | null): { zoom: number; pan: { x: number; y: number } } => {
+    if (!viewportEl) return { zoom: 1, pan: { x: 0, y: 0 } };
+    const pannable = viewportEl.querySelector('.svg-pannable') as HTMLDivElement | null;
+    const svg = viewportEl.querySelector('svg');
+    if (!svg || !pannable) return { zoom: 1, pan: { x: 0, y: 0 } };
+
+    // Temporarily reset transform to measure SVG's natural size
+    const prevTransform = pannable.style.transform;
+    pannable.style.transform = 'none';
+    const svgRect = svg.getBoundingClientRect();
+    pannable.style.transform = prevTransform;
+
+    const svgW = svgRect.width;
+    const svgH = svgRect.height;
+    if (!svgW || !svgH) return { zoom: 1, pan: { x: 0, y: 0 } };
+
+    const vpW = viewportEl.clientWidth;
+    const vpH = viewportEl.clientHeight;
+    // Fit diagram to viewport with small margin
+    const zoom = Math.min(vpW / svgW, vpH / svgH) * 0.92;
+    // Center the scaled diagram
+    const panX = (vpW - svgW * zoom) / 2;
+    const panY = (vpH - svgH * zoom) / 2;
+    return { zoom, pan: { x: panX, y: panY } };
+  }, []);
+
+  // Apply fit view
+  const applyFitView = useCallback(() => {
+    const { zoom, pan } = calcFitView(previewViewportRef.current);
+    setPreviewZoom(zoom);
+    setPreviewPan(pan);
+  }, [calcFitView]);
+
+  // Auto-fit when entering fullscreen — wait for the HOST to actually resize the viewport
+  // (not just our local displayMode state change, which happens before the host expands)
+  useEffect(() => {
+    if (displayMode !== "fullscreen") return;
+    const el = previewViewportRef.current;
+    if (!el) return;
+    if (!renderedSvg) return;
+
+    // Capture initial viewport size (still inline-sized at this point)
+    const initialW = el.clientWidth;
+    const initialH = el.clientHeight;
+
+    let cancelled = false;
+    let fitted = false;
+
+    // Wait for dimensions to stabilize (no change for 3 consecutive frames)
+    // then apply fit. This handles the host expanding in stages.
+    const waitForStableAndFit = () => {
+      if (cancelled || fitted) return;
+      let lastW = el.clientWidth;
+      let lastH = el.clientHeight;
+      let stableFrames = 0;
+      const check = () => {
+        if (cancelled || fitted) return;
+        const w = el.clientWidth;
+        const h = el.clientHeight;
+        if (w === lastW && h === lastH) {
+          stableFrames++;
+        } else {
+          stableFrames = 0;
+          lastW = w;
+          lastH = h;
+        }
+        if (stableFrames >= 3) {
+          fitted = true;
+          applyFitView();
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    };
+
+    // Watch for viewport resize (host expanding to fullscreen)
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth !== initialW || el.clientHeight !== initialH) {
+        observer.disconnect();
+        waitForStableAndFit();
+      }
+    });
+    observer.observe(el);
+
+    // Safety fallback: if viewport was already at final size
+    const fallback = setTimeout(() => {
+      observer.disconnect();
+      if (!fitted) {
+        waitForStableAndFit();
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      fitted = true;
+      observer.disconnect();
+      clearTimeout(fallback);
+    };
+  }, [displayMode, renderedSvg, applyFitView]);
+
   // Fullscreen toggle
   const handleFullscreenToggle = useCallback(async () => {
     if (!app) return;
     
     const newMode = displayMode === "inline" ? "fullscreen" : "inline";
     setDisplayMode(newMode);
-    if (newMode === "fullscreen") {
-      setPreviewZoom(1);
-      setPreviewPan({ x: 0, y: 0 });
-    }
     
     try {
       await app.requestDisplayMode({ mode: newMode });
@@ -411,9 +560,11 @@ function MermaidApp() {
               <button onClick={() => setPreviewZoom((z) => Math.min(5, z * 1.2))} className="icon-btn" title="Zoom In">+</button>
               <button onClick={() => setPreviewZoom((z) => Math.max(0.1, z / 1.2))} className="icon-btn" title="Zoom Out">&minus;</button>
               <button onClick={() => { setPreviewZoom(1); setPreviewPan({ x: 0, y: 0 }); }} className="icon-btn" title="Reset Zoom" style={{ fontSize: 11 }}>1:1</button>
+              <button onClick={applyFitView} className="icon-btn" title="Fit to View" style={{ fontSize: 11 }}>Fit</button>
               <span className="text-muted" style={{ fontSize: 12 }}>{Math.round(previewZoom * 100)}%</span>
             </div>
             <div
+              ref={previewViewportRef}
               className="svg-viewport"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
@@ -426,7 +577,7 @@ function MermaidApp() {
                 className="svg-pannable"
                 style={{
                   transform: `translate(${previewPan.x}px, ${previewPan.y}px) scale(${previewZoom})`,
-                  transformOrigin: 'center center',
+                  transformOrigin: '0 0',
                 }}
                 dangerouslySetInnerHTML={{ __html: renderedSvg }}
               />

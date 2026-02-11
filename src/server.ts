@@ -49,13 +49,18 @@ flowchart TD
     D --> E
 \`\`\`
 
-### Rule 5: Avoid subgraphs for streaming
+### Rule 5: Subgraph rules (CRITICAL)
 Subgraphs require \`end\` to close, which breaks mid-stream parsing.
 - If you must use subgraphs, keep them very short (2-3 nodes max)
 - Place the \`end\` keyword immediately after the last node
+- **NEVER use the same name for a subgraph ID and a node ID inside it** — this creates a cycle error!
+- BAD: \`subgraph Analytics\\n    Analytics[Analytics Service]\\n    end\` → ERROR: cycle!
+- GOOD: \`subgraph Analytics\\n    AN1[Analytics Service]\\n    end\`
+- Always give nodes inside subgraphs unique short IDs (e.g. AN1, PAY1, INV1) that differ from the subgraph name
 
 ### Rule 6: Use simple node IDs
 Use short IDs: \`A\`, \`B\`, \`C\` or \`step1\`, \`step2\`. Avoid long IDs.
+- When using subgraphs, prefix node IDs to avoid collisions: \`GW1\`, \`PAY1\`, \`INV1\`
 
 ### Rule 7: No special characters in labels
 Avoid \`<\`, \`>\`, \`&\`, quotes in node labels. Use plain text only.

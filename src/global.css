@@ -136,11 +136,15 @@ body {
 }
 
 .svg-pannable svg {
-  max-width: 100%;
   height: auto;
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
+}
+
+/* In inline mode, constrain SVG to container for preview */
+.inline-container .svg-pannable svg {
+  max-width: 100%;
 }
 
 /* Overflow hint */
@@ -254,6 +258,17 @@ body {
   flex: 1;
   overflow: visible;
   background: #ffffff;
+}
+
+/* Fullscreen preview: absolute positioning for precise transform control */
+.preview-panel .svg-pannable {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: auto;
+  min-height: auto;
+  display: block;
+  padding: 0;
 }
 
 .preview-toolbar {
