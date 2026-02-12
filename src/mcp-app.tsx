@@ -594,9 +594,6 @@ function MermaidApp() {
             <button onClick={handleExport} className="icon-btn" title="Export SVG" disabled={isExporting}>
               {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
             </button>
-            <button onClick={handleFullscreenToggle} className="icon-btn" title="Exit Fullscreen">
-              <ExpandIcon />
-            </button>
           </div>
         </div>
         <div className="fullscreen-content">
