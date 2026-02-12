@@ -142,6 +142,8 @@ function MermaidApp() {
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewPan, setPreviewPan] = useState({ x: 0, y: 0 });
+  const [editorWidthPct, setEditorWidthPct] = useState(35);
+  const isDraggingSplitterRef = useRef(false);
   
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -534,6 +536,32 @@ function MermaidApp() {
     }
   }, [app, diagramState.theme]);
 
+  const handleSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingSplitterRef.current = true;
+    const startX = e.clientX;
+    const startPct = editorWidthPct;
+    const onMove = (ev: MouseEvent) => {
+      if (!isDraggingSplitterRef.current) return;
+      const container = (e.target as HTMLElement).closest('.fullscreen-content');
+      if (!container) return;
+      const dx = ev.clientX - startX;
+      const newPct = startPct + (dx / container.clientWidth) * 100;
+      setEditorWidthPct(Math.max(15, Math.min(70, newPct)));
+    };
+    const onUp = () => {
+      isDraggingSplitterRef.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [editorWidthPct]);
+
   if (appError) {
     return (
       <div className="error-container">
@@ -572,7 +600,7 @@ function MermaidApp() {
           </div>
         </div>
         <div className="fullscreen-content">
-          <div className="editor-panel">
+          <div className="editor-panel" style={{ width: `${editorWidthPct}%`, flex: 'none' }}>
             <textarea
               value={editedMermaid}
               onChange={(e) => handleMermaidEdit(e.target.value)}
@@ -581,7 +609,8 @@ function MermaidApp() {
               placeholder="Enter Mermaid syntax..."
             />
           </div>
-          <div className="preview-panel">
+          <div className="resize-handle" onMouseDown={handleSplitterMouseDown} />
+          <div className="preview-panel" style={{ flex: 1 }}>
             {error && <div className="error-banner">{error}</div>}
             <div className="preview-toolbar">
               <button onClick={() => setPreviewZoom((z) => Math.min(5, z * 1.2))} className="icon-btn" title="Zoom In">+</button>
