@@ -2,6 +2,12 @@
 
 A streamable MCP App server that renders interactive Mermaid diagrams with live preview, theme switching, and fullscreen editing.
 
+## Demo
+
+![Mermaid MCP App Demo](docs/mermaid-mcp-demo.gif)
+
+*Interactive diagram editing with live preview, pan/zoom controls, and fullscreen mode*
+
 ## Features
 
 - **Complete Rendering** - Waits for full diagram generation before displaying (no partial/streaming output)
