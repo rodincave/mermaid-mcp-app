@@ -56,6 +56,26 @@ const SpinnerIcon = () => (
 const detectDarkMode = (): boolean =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+const bakeComputedStyles = (svgHtml: string): string => {
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-9999px;visibility:hidden';
+  container.innerHTML = svgHtml;
+  document.body.appendChild(container);
+  const svgEl = container.querySelector('svg');
+  if (svgEl) {
+    svgEl.querySelectorAll('.cluster path, .cluster rect').forEach(el => {
+      const cs = getComputedStyle(el);
+      if (cs.fill) el.setAttribute('fill', cs.fill);
+      if (cs.stroke) el.setAttribute('stroke', cs.stroke);
+    });
+  }
+  const result = svgEl
+    ? new XMLSerializer().serializeToString(svgEl)
+    : container.innerHTML;
+  document.body.removeChild(container);
+  return result;
+};
+
 /**
  * Fix Mermaid cycle errors: when a node ID inside a subgraph matches the
  * subgraph name, Mermaid throws "Setting X as parent of X would create a cycle".
@@ -205,7 +225,6 @@ function MermaidApp() {
     if (renderingRef.current) return; // prevent concurrent renders
     renderingRef.current = true;
 
-    // Fix subgraph/node ID collisions that cause cycle errors
     const safeSyntax = fixSubgraphCycles(syntax);
 
     try {
@@ -235,7 +254,7 @@ function MermaidApp() {
       
       try {
         const { svg } = await mermaid.render(id, safeSyntax);
-        setRenderedSvg(svg);
+        setRenderedSvg(bakeComputedStyles(svg));
         setError(null);
       } catch (renderErr: any) {
         // Clean up orphaned element that mermaid.render() may have created

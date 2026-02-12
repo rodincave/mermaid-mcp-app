@@ -475,6 +475,10 @@ Call read_me first for full syntax reference.`
                 overrides: {
                   // Keep IDs that mermaid uses for styling
                   cleanupIds: false,
+                  // Don't inline/modify CSS — Mermaid uses scoped class-based styles
+                  // for cluster/subgraph backgrounds that break when inlined
+                  inlineStyles: false,
+                  minifyStyles: false,
                   // Round path coordinates to 2 decimal places (mermaid outputs 15+)
                   convertPathData: { floatPrecision: 2 },
                   // Round numeric values to 2 decimal places
