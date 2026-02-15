@@ -25,6 +25,7 @@
     "serve": "bun --watch src/main.ts",
     "start": "cross-env NODE_ENV=development npm run build && npm run serve",
     "dev": "cross-env NODE_ENV=development concurrently 'npm run watch' 'npm run serve'",
+    "deploy": "alpic deploy",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -45,6 +46,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^4.3.4",
+    "alpic": "^1.83.1",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "typescript": "^5.9.3",
