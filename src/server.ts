@@ -423,7 +423,11 @@ Call read_me first for full syntax reference.`
         title: z.string().optional().describe("Optional title to display above the diagram."),
       }),
       annotations: { readOnlyHint: true },
-      _meta: { ui: { resourceUri } },
+      _meta: {
+        ui: { resourceUri },
+        "openai/outputTemplate": resourceUri,
+        "openai/widgetAccessible": true,
+      },
     },
     async ({ mermaid, theme, title }): Promise<CallToolResult> => {
       if (!mermaid.trim()) {
@@ -461,7 +465,10 @@ Call read_me first for full syntax reference.`
         svg: z.string().describe("SVG content to export"),
         format: z.enum(["svg", "png"]).describe("Export format"),
       }),
-      _meta: { ui: { visibility: ["app"] } },
+      _meta: {
+        ui: { visibility: ["app"] },
+        "openai/widgetAccessible": true,
+      },
     },
     async ({ svg, format }): Promise<CallToolResult> => {
       if (format === "svg") {
@@ -533,6 +540,13 @@ Call read_me first for full syntax reference.`
                 prefersBorder: true,
                 permissions: { clipboardWrite: {} },
               },
+              "openai/widgetCSP": {
+                resource_domains: ["https://cdn.jsdelivr.net", "https://esm.sh"],
+                connect_domains: ["https://cdn.jsdelivr.net", "https://esm.sh"],
+              },
+              "openai/widgetPrefersBorder": true,
+              "openai/widgetDescription":
+                "Interactive Mermaid diagram renderer with theme selection, fullscreen editing, and SVG export.",
             },
           },
         ],
