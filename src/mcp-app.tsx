@@ -361,30 +361,13 @@ function MermaidApp() {
     await renderMermaid(editedMermaid || diagramState.mermaid, newTheme, false);
   }, [editedMermaid, diagramState.mermaid]);
 
-  // Export handler: send raw SVG to server for SVGO optimization, then copy result to clipboard.
-  // Uses ClipboardItem with a deferred blob promise so clipboard.write() is called
-  // synchronously during the user gesture (preserving activation), while the
-  // actual optimized SVG data resolves asynchronously from the server.
+  // Export handler: copy rendered SVG directly on the client for compatibility
+  // with hosts that do not support widget-initiated server tool calls.
   const handleExport = useCallback(async () => {
-    if (!app || !renderedSvg || isExporting) return;
+    if (!renderedSvg || isExporting) return;
     
     setIsExporting(true);
-
-    const svgPromise = (async () => {
-      try {
-        const result = await app.callServerTool({
-          name: "export_svg",
-          arguments: { svg: renderedSvg, format: "svg" },
-        });
-        const firstContent = result.content?.[0];
-        const optimizedSvg = (firstContent && "text" in firstContent ? firstContent.text : null) || renderedSvg;
-        console.info(`SVG optimized (${Math.round(optimizedSvg.length / 1024)}KB, was ${Math.round(renderedSvg.length / 1024)}KB)`);
-        return optimizedSvg;
-      } catch (err) {
-        console.error("SVGO optimization failed, using raw SVG:", err);
-        return renderedSvg;
-      }
-    })();
+    const svgPromise = Promise.resolve(renderedSvg);
 
     try {
       const item = new ClipboardItem({
@@ -411,7 +394,7 @@ function MermaidApp() {
     } finally {
       setIsExporting(false);
     }
-  }, [app, renderedSvg, isExporting]);
+  }, [renderedSvg, isExporting]);
 
   // Calculate zoom + pan to fit and center the diagram in the viewport
   const calcFitView = useCallback((viewportEl: HTMLDivElement | null): { zoom: number; pan: { x: number; y: number } } => {
