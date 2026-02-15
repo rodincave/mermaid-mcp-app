@@ -20,11 +20,11 @@
   },
   "scripts": {
     "postinstall": "node scripts/setup-bun.mjs || echo 'setup-bun.mjs failed or not available'",
-    "build": "tsc --noEmit && cross-env INPUT=src/mcp-app.html vite build && tsc -p tsconfig.server.json && bun build src/server.ts --outdir dist --target node --external svgo && bun build src/main.ts --outfile dist/index.js --target node --external \"./server.js\" --banner \"#!/usr/bin/env node\"",
-    "watch": "cross-env INPUT=src/mcp-app.html vite build --watch",
-    "serve": "bun --watch src/main.ts",
-    "start": "cross-env NODE_ENV=development npm run build && npm run serve",
-    "dev": "cross-env NODE_ENV=development concurrently 'npm run watch' 'npm run serve'",
+    "build": "tsc --noEmit && INPUT=src/mcp-app.html vite build && tsc -p tsconfig.server.json && bun build src/server.ts --outdir dist --target node --external svgo && bun build src/main.ts --outfile dist/index.js --target node --external \"./server.js\" --banner \"#!/usr/bin/env node\"",
+    "watch": "INPUT=src/mcp-app.html vite build --watch",
+    "serve": "NODE_ENV=production bun src/main.ts",
+    "start": "npm run serve",
+    "dev": "NODE_ENV=development concurrently 'npm run watch' 'bun --watch src/main.ts'",
     "deploy": "alpic deploy",
     "prepublishOnly": "npm run build"
   },
