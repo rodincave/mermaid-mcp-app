@@ -52,12 +52,12 @@ export async function startStreamableHTTPServer(
     }
   });
 
-  const httpServer = app.listen(port, (err) => {
-    if (err) {
-      console.error("Failed to start server:", err);
-      process.exit(1);
-    }
+  const httpServer = app.listen(port, () => {
     console.log(`MCP server listening on http://localhost:${port}/mcp`);
+  });
+  httpServer.on("error", (err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
   });
 
   const shutdown = () => {
